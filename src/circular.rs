@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, alloc, ptr::null_mut};
+use std::{marker::PhantomData, alloc::{self, alloc}, ptr::null_mut};
 
 pub struct Circular<T> {
     first: *mut Node<T>,
@@ -22,24 +22,34 @@ impl<T> Circular<T> {
     }
 
     pub fn prepend(&mut self, val: T) {
+        self.insert(0, val);
+    }
+
+    pub fn insert(&mut self, loc: usize, val: T) {
+        assert!(loc <= self.size);
         let layout = alloc::Layout::new::<Node<T>>();
         let ptr = unsafe {
-            alloc::alloc(layout) as *mut Node<T>
+            alloc(layout) as *mut Node<T>
         };
 
         if self.size > 0 {
-            let old_root = self.first;
+            let mut curr = self.first;
+            let mut i = loc;
             unsafe {
-                let bottom = (*old_root).previous;
+                while i > 0 {
+                    curr = (*curr).next;
+                    i -= 1;
+                }
+
+                let next = curr;
+                let prev = (*next).previous;
                 std::ptr::write(ptr, Node {
                     value: val,
-                    next: old_root,
-                    previous: bottom,
+                    next: next,
+                    previous: prev,
                 });
-                let previous_of_old_root = &mut (*old_root).previous as *mut *mut Node<T>;
-                std::ptr::write(previous_of_old_root, ptr);
-                let next_of_bottom = &mut (*bottom).next as *mut *mut Node<T>;
-                std::ptr::write(next_of_bottom, ptr);
+                (*next).previous = ptr;
+                (*prev).next = ptr;
             }
         } else {
             unsafe {
@@ -47,12 +57,14 @@ impl<T> Circular<T> {
                     value: val,
                     next: ptr,
                     previous: ptr,
-                });
+                })
             }
         }
 
+        if loc == 0 {
+            self.first = ptr;
+        }
+        
         self.size += 1;
-        self.first = ptr;
     }
-
 }
