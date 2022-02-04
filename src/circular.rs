@@ -1,21 +1,21 @@
-use std::{marker::PhantomData, alloc::{self, alloc}, ptr::null_mut};
+use std::{marker::PhantomData, alloc::{self, alloc}, ptr::{NonNull}};
 
 pub struct Circular<T> {
-    first: *mut Node<T>,
+    first: NonNull<Node<T>>,
     size: usize,
     _own: PhantomData<T>,
 }
 
 struct Node<T> {
     value: T,
-    next: *mut Node<T>,
-    previous: *mut Node<T>,
+    next: NonNull<Node<T>>,
+    previous: NonNull<Node<T>>,
 }
 
 impl<T> Circular<T> {
     pub fn new() -> Self {
         Circular {
-            first: null_mut(),
+            first: NonNull::dangling(),
             size: 0,
             _own: PhantomData,
         }
@@ -29,7 +29,11 @@ impl<T> Circular<T> {
         assert!(loc <= self.size);
         let layout = alloc::Layout::new::<Node<T>>();
         let ptr = unsafe {
-            alloc(layout) as *mut Node<T>
+            let loc = alloc(layout) as *mut Node<T>;
+            match NonNull::new(loc) {
+                Some(p) => p,
+                None => alloc::handle_alloc_error(layout),
+            }
         };
 
         if self.size > 0 {
@@ -37,23 +41,23 @@ impl<T> Circular<T> {
             let mut i = loc;
             unsafe {
                 while i > 0 {
-                    curr = (*curr).next;
+                    curr = curr.as_ref().next;
                     i -= 1;
                 }
 
-                let next = curr;
-                let prev = (*next).previous;
-                std::ptr::write(ptr, Node {
+                let mut next = curr;
+                let mut prev = next.as_ref().previous;
+                std::ptr::write(ptr.as_ptr(), Node {
                     value: val,
                     next: next,
                     previous: prev,
                 });
-                (*next).previous = ptr;
-                (*prev).next = ptr;
+                next.as_mut().previous = ptr;
+                prev.as_mut().next = ptr;
             }
         } else {
             unsafe {
-                std::ptr::write(ptr, Node {
+                std::ptr::write(ptr.as_ptr(), Node {
                     value: val,
                     next: ptr,
                     previous: ptr,
