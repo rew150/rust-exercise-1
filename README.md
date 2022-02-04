@@ -34,14 +34,14 @@ Arc: atomic RC
 *const: immutable raw pointer
  - unsafe to dereference
  - lifetime and ownership is not working
- - cannot be reassigned
+ - refer to immutable value
  - nullable
 
 
 *mut: mutable raw pointer
  - unsafe to dereference
  - lifetime and ownership is not working
- - can be reassigned
+ - refer to mutable value
  - nullable
 ```
 
