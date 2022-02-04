@@ -1,20 +1,28 @@
 use std::alloc::{self, Layout};
 use std::marker::PhantomData;
-use std::ops::Add;
+use std::mem;
 use std::ptr::{NonNull, self};
 use std::ops::{Deref, DerefMut};
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 
-pub struct vector<T> {
+pub struct Vector<T> {
     loc: NonNull<T>,
     cap: usize,
     size: usize,
     _own: PhantomData<T>,
 }
 
-impl<T> vector<T> {
-    fn new() -> Self {
-        vector{
+pub struct IntoIter<T> {
+    buf: NonNull<T>,
+    cap: usize,
+    start: *const T,
+    end: *const T,
+    _own: PhantomData<T>,
+}
+
+impl<T> Vector<T> {
+    pub fn new() -> Self {
+        Vector{
            loc: NonNull::dangling(),
            size: 0,
            cap: 0,
@@ -51,7 +59,7 @@ impl<T> vector<T> {
         self.cap = new_cap;
     }
 
-    fn push(&mut self, elem: T) {
+    pub fn push(&mut self, elem: T) {
         if self.size == self.cap {
             self.grow();
         }
@@ -63,7 +71,7 @@ impl<T> vector<T> {
         self.size += 1;
     }
 
-    fn pop(&mut self) -> Option<T> {
+    pub fn pop(&mut self) -> Option<T> {
         if self.size == 0 {
             None
         } else {
@@ -74,7 +82,7 @@ impl<T> vector<T> {
         }
     }
 
-    fn insert(&mut self, loc: usize, elem: T) {
+    pub fn insert(&mut self, loc: usize, elem: T) {
         assert!(loc <= self.size);
         if self.cap == self.size {
             self.grow();
@@ -87,7 +95,7 @@ impl<T> vector<T> {
         }
     }
 
-    fn remove(&mut self, loc: usize) -> T {
+    pub fn remove(&mut self, loc: usize) -> T {
         assert!(loc < self.size);
         unsafe {
             self.size -= 1;
@@ -96,22 +104,42 @@ impl<T> vector<T> {
             res
         }
     }
+
+    pub fn into_iter(self) -> IntoIter<T> {
+        let ptr = self.loc;
+        let cap = self.cap;
+        let size = self.size;
+        mem::forget(self);
+        unsafe {
+            IntoIter {
+                buf: ptr,
+                cap: cap,
+                start: ptr.as_ptr(),
+                end: if cap == 0 {
+                    ptr.as_ptr()
+                } else {
+                    ptr.as_ptr().add(size)
+                },
+                _own: PhantomData
+            }
+        }
+    }
 }
 
-impl<T> Drop for vector<T> {
+impl<T> Drop for Vector<T> {
     fn drop(&mut self) {
         if self.cap > 0 {
             // drop every element
             while let Some(_) = self.pop() {}
             let layout = Layout::array::<T>(self.cap).unwrap();
             unsafe {
-                alloc::dealloc(self.loc as *mut u8, layout);
+                alloc::dealloc(self.loc.as_ptr() as *mut u8, layout);
             }
         } 
     }
 }
 
-impl<T> Deref for vector<T> {
+impl<T> Deref for Vector<T> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
         unsafe {
@@ -120,11 +148,55 @@ impl<T> Deref for vector<T> {
     }
 }
 
-impl<T> DerefMut for vector<T> {
-    type Target = [T];
+impl<T> DerefMut for Vector<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe {
             from_raw_parts_mut(self.loc.as_ptr(), self.size)
+        }
+    }
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.start == self.end {
+            None
+        } else {
+            unsafe {
+                let res = ptr::read(self.start);
+                self.start = self.start.offset(1);
+                Some(res)
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = (self.end as usize - self.start as usize) / mem::size_of::<T>();
+        (len, Some(len))
+    }
+}
+
+impl<T> DoubleEndedIterator for IntoIter<T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.start == self.end {
+            None
+        } else {
+            unsafe {
+                self.end = self.end.offset(-1);
+                Some(ptr::read(self.end))
+            }
+        }
+    }
+}
+
+impl<T> Drop for IntoIter<T> {
+    fn drop(&mut self) {
+        if self.cap != 0 {
+            for _ in &mut *self {}
+            let layout = Layout::array::<T>(self.cap).unwrap();
+            unsafe {
+                alloc::dealloc(self.buf.as_ptr() as *mut u8, layout);
+            }
         }
     }
 }

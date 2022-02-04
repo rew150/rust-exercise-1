@@ -1,5 +1,5 @@
 mod vector;
 
-main() {
-    vector::hello_world();
+fn main() {
+    println!("Hello, world!");
 }
