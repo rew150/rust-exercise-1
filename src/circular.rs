@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, alloc::{self, alloc}, ptr::{NonNull}};
+use std::{marker::PhantomData, alloc::{self, alloc, Layout}, ptr::{NonNull,self}};
 
 pub struct Circular<T> {
     first: NonNull<Node<T>>,
@@ -13,6 +13,10 @@ struct Node<T> {
 }
 
 impl<T> Circular<T> {
+    fn node_layout() -> Layout {
+        Layout::new::<Node<T>>()
+    }
+
     pub fn new() -> Self {
         Circular {
             first: NonNull::dangling(),
@@ -27,7 +31,7 @@ impl<T> Circular<T> {
 
     pub fn insert(&mut self, loc: usize, val: T) {
         assert!(loc <= self.size);
-        let layout = alloc::Layout::new::<Node<T>>();
+        let layout = Self::node_layout();
         let ptr = unsafe {
             let loc = alloc(layout) as *mut Node<T>;
             match NonNull::new(loc) {
@@ -70,5 +74,46 @@ impl<T> Circular<T> {
         }
         
         self.size += 1;
+    }
+
+    pub fn remove(&mut self, loc: usize) -> T {
+        assert!(loc < self.size);
+        self.size -= 1;
+
+        let mut curr = self.first;
+
+        self.first = if self.size == 0 {
+            // change to dangling pointer
+            NonNull::dangling()
+        } else if loc == 0 {
+            // assign to next node
+            unsafe {
+                self.first.as_ref().next
+            }
+        } else {
+            // else do nothing
+            self.first
+        };
+
+        let mut i = loc;
+
+        unsafe {
+            while i > 0 {
+                curr = curr.as_ref().next;
+                i -= 1;
+            }
+
+            let mut next = curr.as_ref().next;
+            let mut prev = curr.as_ref().previous;
+            next.as_mut().previous = prev;
+            prev.as_mut().next = next;
+
+            let res = ptr::read(curr.as_ptr()).value;
+
+            let layout = Self::node_layout();
+            alloc::dealloc(curr.as_ptr() as *mut u8, layout);
+
+            res
+        }
     }
 }
