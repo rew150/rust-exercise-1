@@ -8,7 +8,7 @@ pub struct Circular<T> {
     _own: PhantomData<T>,
 }
 
-pub struct IterMut<'a, T> {
+pub struct IterMut<'a, T: 'a> {
     next: *mut Node<T>,
     prev: *mut Node<T>,
     _own: PhantomData<&'a mut T>,
