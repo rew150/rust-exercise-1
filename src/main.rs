@@ -3,5 +3,5 @@ mod circular;
 mod safecircular;
 
 fn main() {
-    println!("Hello, world!");
+    println!("{}", ((-1) % 6 +6) % 6);
 }

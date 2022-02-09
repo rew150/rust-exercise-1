@@ -1,9 +1,17 @@
-use std::{marker::PhantomData, alloc::{self, alloc, Layout}, ptr::{NonNull,self}};
+mod test;
+
+use std::{marker::PhantomData, alloc::{self, alloc, Layout}, ptr::{NonNull,self}, ops::{Index, IndexMut}};
 
 pub struct Circular<T> {
     first: NonNull<Node<T>>,
     size: usize,
     _own: PhantomData<T>,
+}
+
+pub struct IterMut<'a, T> {
+    next: *mut Node<T>,
+    prev: *mut Node<T>,
+    _own: PhantomData<&'a mut T>,
 }
 
 struct Node<T> {
@@ -116,4 +124,104 @@ impl<T> Circular<T> {
             res
         }
     }
+
+    pub fn value_at(&self, idx: usize) -> &T {
+        assert!(idx < self.size);
+        let mut curr = self.first;
+        let mut i = idx;
+        unsafe {
+            while i > 0 {
+                curr = curr.as_ref().next;
+                i -= 1;
+            }
+            &curr.as_mut().value
+        }
+    }
+
+    pub fn value_at_mut(&mut self, idx: usize) -> &mut T {
+        assert!(idx < self.size);
+        let mut curr = self.first;
+        let mut i = idx;
+        unsafe {
+            while i > 0 {
+                curr = curr.as_ref().next;
+                i -= 1;
+            }
+            &mut curr.as_mut().value
+        }
+    }
+
+    pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, T> {
+        IterMut {
+            next: if self.size == 0 {
+                ptr::null_mut()
+            } else {
+                unsafe {
+                    self.first.as_ptr()
+                }
+            },
+            prev: if self.size == 0 {
+                ptr::null_mut()
+            } else {
+                unsafe {
+                    self.first.as_ref().previous.as_ptr()
+                }
+            },
+            _own: PhantomData,
+        }
+    }
 }
+
+impl<T> Drop for Circular<T> {
+    fn drop(&mut self) {
+        while self.size > 0 {
+            self.remove(0);
+        }
+    }
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next.is_null() {
+            None
+        } else {
+            let res = unsafe {
+                &mut*self.next
+            };
+            self.next = res.next.as_ptr();
+            Some(&mut res.value)
+        }
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.prev.is_null() {
+            None
+        } else {
+            let res = unsafe {
+                &mut*self.prev
+            };
+            self.prev = res.previous.as_ptr();
+            Some(&mut res.value)
+        }
+    }
+}
+
+impl<T> Index<usize> for Circular<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        let real_idx = index % self.size;
+        self.value_at(real_idx)
+    }
+}
+
+impl<T> IndexMut<usize> for Circular<T> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        let real_idx = index % self.size;
+        self.value_at_mut(real_idx)
+    }
+}
+
