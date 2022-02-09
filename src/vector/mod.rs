@@ -106,26 +106,6 @@ impl<T> Vector<T> {
             res
         }
     }
-
-    pub fn into_iter(self) -> IntoIter<T> {
-        let ptr = self.loc;
-        let cap = self.cap;
-        let size = self.size;
-        mem::forget(self);
-        unsafe {
-            IntoIter {
-                buf: ptr,
-                cap: cap,
-                start: ptr.as_ptr(),
-                end: if cap == 0 {
-                    ptr.as_ptr()
-                } else {
-                    ptr.as_ptr().add(size)
-                },
-                _own: PhantomData
-            }
-        }
-    }
 }
 
 impl<T> Drop for Vector<T> {
@@ -154,6 +134,30 @@ impl<T> DerefMut for Vector<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe {
             from_raw_parts_mut(self.loc.as_ptr(), self.size)
+        }
+    }
+}
+
+impl<T> IntoIterator for Vector<T> {
+    type IntoIter = IntoIter<T>;
+    type Item = T;
+    fn into_iter(self) -> Self::IntoIter {
+        let ptr = self.loc;
+        let cap = self.cap;
+        let size = self.size;
+        mem::forget(self);
+        unsafe {
+            IntoIter {
+                buf: ptr,
+                cap: cap,
+                start: ptr.as_ptr(),
+                end: if cap == 0 {
+                    ptr.as_ptr()
+                } else {
+                    ptr.as_ptr().add(size)
+                },
+                _own: PhantomData
+            }
         }
     }
 }
