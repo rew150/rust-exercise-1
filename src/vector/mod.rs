@@ -1,3 +1,5 @@
+mod test;
+
 use std::alloc::{self, Layout};
 use std::marker::PhantomData;
 use std::mem;
