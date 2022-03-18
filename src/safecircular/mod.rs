@@ -1,4 +1,4 @@
-use std::{rc::{Rc, Weak}, cell::{RefCell, Ref}};
+use std::{rc::{Rc, Weak}, cell::{RefCell, Ref}, ops::Deref};
 
 type MRc<T> = Rc<RefCell<T>>;
 type MWeak<T> = Weak<RefCell<T>>;
@@ -55,16 +55,15 @@ impl<T> Circular<T> {
             root.borrow_mut().first = Some(node);
             root.borrow_mut().last = Some(weak_ref);
         } else {
-            todo!();
-            let mut next: Ref<Node<T>>;
-            let mut curr = borrowed_root.first.as_ref().unwrap().borrow();
+            let mut curr = borrowed_root.first.as_ref().unwrap().borrow_mut();
+            let mut next;
             let mut i = idx;
             while i > 0 {
-                next = match curr.next {
-                    Next::Next(ref n) => n,
+                std::mem::replace(&mut curr, match curr.next {
+                    Next::Next(ref n) => n.borrow_mut(),
                     _ => panic!("size/pointer error"),
-                }.borrow();
-                curr = next;
+                });
+                curr = next
             }
         }
 
